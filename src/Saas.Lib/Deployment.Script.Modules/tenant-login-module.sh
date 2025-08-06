@@ -181,6 +181,56 @@ function log-into-b2c() {
     put-value ".deployment.azureb2c.tenantId" "${tenant_id}"       
 }
 
+function log-into-entra() { 
+    local tenant_name="$1"
+
+    if ! [[ "${tenant_name}" == "null" ]] \
+        && [[ -n "${tenant_name}" ]] ; then
+
+        if is-logged-into-tenant-by-name "${tenant_name}" ; then
+            echo "You are already logged in to the Entra ID tenant: ${tenant_name}" \
+                | log-output \
+                    --level info
+            return 
+        fi
+    fi
+
+    echo "You are not currently logged in to the Entra ID tenant: ${tenant_name}." \
+        | log-output \
+            --level info
+
+    echo "Please be patient, it sometimes take a little while for the login prompt to appear..." \
+        | log-output \
+            --level warning
+
+    echo "You must be logged into your Entra ID tenant to continue." \
+        | log-output \
+            --level info
+
+    sleep 1
+    
+    az login \
+        --use-device-code \
+        --tenant "${tenant_name}" \
+        --only-show-errors \
+        --allow-no-subscription \
+        --output none \
+            || log-in-error
+
+    tenant_id="$( az account show \
+        --query "{tenantId:tenantId}" \
+        --output tsv \
+            || log-in-error )"
+
+    if [[ -z "${tenant_id}" ]] ; then
+        log-in-error
+    fi
+
+    cache-session
+
+    put-value ".deployment.entraId.tenantId" "${tenant_id}"       
+}
+
 function cache-session() {
     set +u
     if [[ ! $ASDK_CACHE_AZ_CLI_SESSIONS == true ]] || [[ -z $ASDK_CURRENT_USER ]]; then

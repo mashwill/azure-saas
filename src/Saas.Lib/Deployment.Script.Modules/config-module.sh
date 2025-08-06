@@ -197,7 +197,7 @@ function put-policy-key-secret-path() {
 
     output="$(echo "${json}" |
         jq --arg x "${secret_path}" \
-            "( .azureb2c.policyKeys[] \
+            "( .entraId.apiKeys[] \
             | select(.name==\"${name}\") ).secretPath \
             |= \$x")" &&
         echo "${output}" >"${CONFIG_FILE}" ||
@@ -246,6 +246,16 @@ function put-app-object-id() {
         exit 1
 }
 
+function get-app-object-id() {
+    local app_name="$1"
+    local json
+    json="$(cat "${CONFIG_FILE}")"
+    echo "${json}" |
+        jq --raw-output \
+            "( .appRegistrations[] \
+            | select(.name==\"${app_name}\") ).objectId"
+}
+
 get-app-value() {
     local app_name="$1"
     local key="$2"
@@ -260,6 +270,41 @@ get-app-value() {
 }
 
 put-app-value() {
+    local app_name="$1"
+    local key="$2"
+    local value="$3"
+
+    local json
+
+    json="$(cat "${CONFIG_FILE}")"
+
+    output="$(echo "${json}" |
+        jq --arg x "${value}" \
+            "( .appRegistrations[] \
+            | select(.name==\"${app_name}\") ).${key} \
+            |= \$x")" &&
+        echo "${output}" >"${CONFIG_FILE}" ||
+        exit 1
+}
+
+get-app-registration-value() {
+    local app_name="$1"
+    local key="$2"
+
+    local json
+
+    json="$(cat "${CONFIG_FILE}")"
+
+    echo "${json}" |
+        jq --raw-output \
+            --arg app_name "${app_name}" \
+            --arg key "${key}" \
+            ".appRegistrations[] \
+                | select(.name == \$app_name ) \
+                | .[\$key]"
+}
+
+put-app-registration-value() {
     local app_name="$1"
     local key="$2"
     local value="$3"

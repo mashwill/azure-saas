@@ -16,19 +16,19 @@ function clean-up-after-service-principal() {
         | log-output \
             --level info
 
-    service_principal_username="$( get-value ".deployment.azureb2c.servicePrincipal.username" )"
+    service_principal_username="$( get-value ".deployment.entraId.servicePrincipal.username" )"
     service_principal_credentials_file_path="$( get-user-value "${service_principal_username}" "credentialsPath" )"
     sudo rm -f "${service_principal_credentials_file_path}"
 
-    # deleting service principal credentials in Azure AD B2C too
-    app_id="$( get-value ".deployment.azureb2c.servicePrincipal.appId" )"
-    b2c_config_usr_name="$( get-value ".deployment.azureb2c.username" )"
-    echo "Deleting service principal credentials using user '${b2c_config_usr_name}'" \
+    # deleting service principal credentials in Entra ID too
+    app_id="$( get-value ".deployment.entraId.servicePrincipal.appId" )"
+    entra_config_usr_name="$( get-value ".deployment.entraId.username" )"
+    echo "Deleting service principal credentials using user '${entra_config_usr_name}'" \
         | log-output \
             --level info
 
-    # setting user context to the user that will be used for configuring Azure B2C
-    set-user-context "${b2c_config_usr_name}"
+    # setting user context to the user that will be used for configuring Entra ID
+    set-user-context "${entra_config_usr_name}"
 
     # deleting the service principal
     delete-service-principal-credentials "${app_id}"
@@ -36,7 +36,7 @@ function clean-up-after-service-principal() {
     # resetting user context to the user that was used to login to the tenant
     reset-user-context
 
-    echo "Service principal credentials have been removed locally and in Azure AD B2C" \
+    echo "Service principal credentials have been removed locally and in Entra ID" \
         | log-output \
             --level success
 }
@@ -60,13 +60,13 @@ function clean-up() {
     clean-up-after-service-principal
 
     # deleting the temp service principal user as we no longer need it.
-    service_principal_username="$( get-value ".deployment.azureb2c.servicePrincipal.username" )"
+    service_principal_username="$( get-value ".deployment.entraId.servicePrincipal.username" )"
     delete-user-context-data "${service_principal_username}"
     echo "User context for ${service_principal_username} have been deleted." | log-output --level success
 
-    # Deleting the temp b2c configuration user as we no longer need it.
-    delete-user-context-data "${b2c_config_usr_name}"
-    echo "User context for ${b2c_config_usr_name} have been deleted." | log-output --level success
+    # Deleting the temp Entra ID configuration user as we no longer need it.
+    delete-user-context-data "${entra_config_usr_name}"
+    echo "User context for ${entra_config_usr_name} have been deleted." | log-output --level success
     echo "Clean up has completed." \
         | log-output \
             --level success

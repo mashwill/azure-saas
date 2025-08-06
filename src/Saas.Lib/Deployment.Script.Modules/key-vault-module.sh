@@ -102,6 +102,115 @@ function create-key-vault() {
     fi
 }
 
+function create-key-vault-cli() {
+    local key_vault_name="$1"
+    local resource_group="$2"
+    local key_vault_type_name="Microsoft.KeyVault/vaults"
+
+    echo "Checking if the Key Vault have already been successfully created..." |
+        log-output \
+            --level info
+
+    # Get location value early
+    location="$(get-value ".initConfig.location")"
+
+    # Always try to purge any existing deleted Key Vault first
+    echo "Checking for any existing deleted Key Vault that needs purging..." |
+        log-output \
+            --level info
+    
+    az keyvault purge --name "${key_vault_name}" --location "${location}" 2>/dev/null || true
+    
+    if ! resource-exist "${key_vault_type_name}" "${key_vault_name}"; then
+        echo "No Key Vault found." |
+            log-output \
+                --level info
+    else
+        echo "Existing Key Vault found. Checking if it has RBAC enabled..." |
+            log-output \
+                --level info
+
+        # Check if the Key Vault has RBAC enabled
+        rbac_enabled=$(az keyvault show --name "${key_vault_name}" --resource-group "${resource_group}" --query "properties.enableRbacAuthorization" -o tsv 2>/dev/null || echo "true")
+        
+        if [[ "${rbac_enabled}" == "true" ]]; then
+            echo "Existing Key Vault has RBAC enabled. Deleting and recreating with access policies..." |
+                log-output \
+                    --level info
+            
+            az keyvault delete --name "${key_vault_name}" --resource-group "${resource_group}" |
+                log-output \
+                    --level info
+            
+            echo "Waiting for Key Vault deletion to complete..." |
+                log-output \
+                    --level info
+            
+            sleep 30
+            
+            echo "Purging deleted Key Vault..." |
+                log-output \
+                    --level info
+            
+            az keyvault purge --name "${key_vault_name}" --location "${location}" |
+                log-output \
+                    --level info
+            
+            echo "Waiting for Key Vault purge to complete..." |
+                log-output \
+                    --level info
+            
+            sleep 30
+        else
+            echo "Existing Key Vault uses access policies. Continuing..." |
+                log-output \
+                    --level success
+            return
+        fi
+    fi
+
+    echo "Deploying Key Vault using Azure CLI..." |
+        log-output \
+            --level info
+
+    user_principal_id="$(get-value ".initConfig.userPrincipalId")"
+
+    # Create Key Vault using Azure CLI with access policies (not RBAC)
+    az keyvault create \
+        --name "${key_vault_name}" \
+        --resource-group "${resource_group}" \
+        --location "${location}" \
+        --enabled-for-deployment \
+        --enabled-for-disk-encryption \
+        --enabled-for-template-deployment \
+        --enable-rbac-authorization false |
+        log-output \
+            --level info ||
+        echo "Failed to create Key Vault" |
+        log-output \
+            --level error \
+            --header "Critical Error" ||
+        exit 1
+
+    # Set access policy for the user
+    az keyvault set-policy \
+        --name "${key_vault_name}" \
+        --resource-group "${resource_group}" \
+        --object-id "${user_principal_id}" \
+        --secret-permissions get list set delete \
+        --certificate-permissions get list create delete |
+        log-output \
+            --level info ||
+        echo "Warning: Failed to set access policy for Key Vault. This may be due to insufficient permissions." |
+        log-output \
+            --level warning \
+            --header "Permission Warning"
+
+    echo "Key Vault Provisioning successfully." |
+        log-output \
+            --level success
+}
+
 function init-key-vault-certificate-template() {
     local b2c_name="$1"
 
@@ -154,6 +263,15 @@ function get-certificate-public-key() {
     local key_vault_name="$2"
     local output_dir="$3"
 
+    # check if output_dir is provided and not empty
+    if [[ -z "${output_dir}" || "${output_dir}" == "null" ]]; then
+        echo "Error: Output directory is not specified for certificate ${key_name}" |
+            log-output \
+                --level error \
+                --header "Critical Error" ||
+            exit 1
+    fi
+
     # check if certificate already exist in and if so delete it
     if [[ -f "${output_dir}/${key_name}.crt" ]]; then
         sudo rm -f "${output_dir}/${key_name}"
@@ -187,6 +305,15 @@ function add-a-secret-to-vault() {
     local key_name="$1"
     local key_vault_name="$2"
     local output_path="$3"
+
+    # check if output_path is provided and not empty
+    if [[ -z "${output_path}" || "${output_path}" == "null" ]]; then
+        echo "Error: Output path is not specified for secret ${key_name}" |
+            log-output \
+                --level error \
+                --header "Critical Error" ||
+            exit 1
+    fi
 
     if secret-exist "${key_name}" "${key_vault_name}"; then
 

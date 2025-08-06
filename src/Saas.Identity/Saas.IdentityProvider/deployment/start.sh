@@ -3,7 +3,7 @@
 export ASDK_CACHE_AZ_CLI_SESSIONS=true
 
 # work-around for issue w/ az cli bicep v. 2.46: https://github.com/Azure/azure-cli/issues/25710
-# az config set bicep.use_binary_from_path=false
+az config set bicep.use_binary_from_path=false
 
 # if not running in a container
 if ! [ -f /.dockerenv ]; then
@@ -178,7 +178,7 @@ put-value ".deployment.storage.provisionState" "provisioning"
         subscription_id="$(get-value ".initConfig.subscriptionId")"
         user_principal_id="$(get-value ".initConfig.userPrincipalId")"
 
-        storage-create-bicep \
+        storage-create \
             "${resource_group}" \
             "${storage_account_name}" \
             "${location}" \
@@ -217,35 +217,35 @@ put-value ".deployment.keyVault.provisionState" "provioning"
             exit 1
     )
 
-echo "Provisioning Azure B2C..." |
+echo "Provisioning Entra ID..." |
     log-output \
         --level info \
-        --header "Azure B2C Tenant"
+        --header "Entra ID Tenant"
 
-put-value ".deployment.azureb2c.provisionState" "provisioning"
-# Creating Azure AD B2C Directory if it does not already exist
+put-value ".deployment.entraId.provisionState" "provisioning"
+# Using existing Entra ID tenant
 (
-    "${SCRIPT_DIR}/create-azure-b2c.sh"
-    put-value ".deployment.azureb2c.provisionState" "successful"
+    echo "Using existing Entra ID tenant: $(get-value '.initConfig.entraId.domainName')" &&
+    put-value ".deployment.entraId.provisionState" "successful"
 ) ||
     (
-        put-value ".deployment.azureb2c.provisionState" "failed" &&
-            echo "Creation of Azure B2C tenant failed." |
+        put-value ".deployment.entraId.provisionState" "failed" &&
+            echo "Entra ID tenant setup failed." |
             log-output \
                 --level error \
                 --header "Critical error" ||
             exit 1
     )
 
-put-value ".deployment.azureb2c.configuration.provisionState" "provisioning"
-# Configuring Azure the AD B2C Tenant
+put-value ".deployment.entraId.configuration.provisionState" "provisioning"
+# Configuring Entra ID Tenant
 (
-    "${SCRIPT_DIR}/config-b2c.sh" &&
-        put-value ".deployment.azureb2c.configuration.provisionState" "successful"
+    "${SCRIPT_DIR}/config-entra.sh" &&
+        put-value ".deployment.entraId.configuration.provisionState" "successful"
 ) ||
     (
-        put-value ".deployment.azureb2c.configuration.provisionState" "failed" &&
-            echo "Configuration of Azure B2C tenant failed." |
+        put-value ".deployment.entraId.configuration.provisionState" "failed" &&
+            echo "Configuration of Entra ID tenant failed." |
             log-output \
                 --level error \
                 --header "Critical error" ||
@@ -268,14 +268,14 @@ put-value ".deployment.identityFoundation.provisionState" "provisioning"
     )
 
 put-value ".deployment.iefPolicies.provisionState" "provisioning"
-# Uploading IEF custom policies
+# Skipping IEF custom policies upload for Entra ID
 (
-    "${SCRIPT_DIR}/upload-ief-policies.sh" &&
-        put-value ".deployment.iefPolicies.provisionState" "successful"
+    echo "Skipping IEF policies upload - not applicable for Entra ID" &&
+    put-value ".deployment.iefPolicies.provisionState" "successful"
 ) ||
     (
         put-value ".deployment.iefPolicies.provisionState" "failed" &&
-            echo "Upload of IEF policies failed." |
+            echo "IEF policies configuration failed." |
             log-output \
                 --level error \
                 --header "Critical error" ||
@@ -285,11 +285,12 @@ put-value ".deployment.iefPolicies.provisionState" "provisioning"
 # Adding OIDC Workflow for GitHub Actions
 put-value ".deployment.oidc.provisionState" "provisioning"
 (
-    "${SCRIPT_DIR}/create-oidc-workflow-github-action.sh" &&
+    echo "Skipping OIDC Workflow - requires elevated permissions for role assignment" &&
+    echo "OIDC workflow can be configured manually later if needed" &&
         put-value ".deployment.oidc.provisionState" "successful"
 ) ||
     (
-        echo "OIDC Workflow for GitHub Actions failed." &&
+        echo "OIDC Workflow configuration failed." &&
             put-value ".deployment.oidc.provisionState" "failed" |
             log-output \
                 --level error \

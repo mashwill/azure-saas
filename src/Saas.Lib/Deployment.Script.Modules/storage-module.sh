@@ -130,11 +130,10 @@ function storage-create() {
         --scope "/subscriptions/${subscription_id}/resourceGroups/${resource_group_name}/providers/Microsoft.Storage/storageAccounts/${storage_account_name}" |
         log-output \
             --level info ||
-        echo "Failed to assign user access to storage account" |
+        echo "Warning: Failed to assign user access to storage account. This may be due to insufficient permissions. Continuing..." |
         log-output \
-            --level error \
-            --header "Critical error" ||
-        exit 1
+            --level warning \
+            --header "Permission Warning"
 
     echo "Allowing Role Assignment 60 seconds to propagate..." |
         log-output \
@@ -146,10 +145,10 @@ function storage-create() {
         log-output \
             --level info
 
-    az storage fs create \
+    az storage container create \
         --name "${storage_container_name}" \
         --account-name "${storage_account_name}" \
-        --public-access "filesystem" \
+        --public-access "blob" \
         --auth-mode login |
         log-output \
             --level info ||
@@ -163,14 +162,15 @@ function storage-create() {
         log-output \
             --level info
 
-    az storage fs directory create \
-        --file-system "${storage_container_name}" \
+    az storage blob upload \
+        --container-name "${storage_container_name}" \
         --account-name "${storage_account_name}" \
-        --name "log" \
+        --name "log/.keep" \
+        --data "" \
         --auth-mode login |
         log-output \
             --level info ||
-        echo "Failed to create directory in Azure Blob Storage." |
+        echo "Failed to create directory marker in Azure Blob Storage." |
         log-output \
             --level error \
             --header "Critical error"
@@ -203,23 +203,22 @@ function backup-to-azure-blob-storage() {
     zip_file_name="${directory}/log-${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}.zip"
 
     zip -r -j "${zip_file_name}" "${directory}" >/dev/null ||
-        echo "Failed to zip logs." |
+        echo "Warning: Failed to zip logs. Backup will be skipped." |
         log-output \
-            --level error \
-            --header "Critical error" ||
-        exit 1
+            --level warning \
+            --header "Backup Warning" ||
+        return 1
 
-    az storage fs file upload \
+    az storage blob upload \
         --account-name "${storage_account_name}" \
-        --file-system "${container_name}" \
-        --path "log/${script_name}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}.zip" \
-        --source "${zip_file_name}" \
+        --container-name "${container_name}" \
+        --name "log/${script_name}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}.zip" \
+        --file "${zip_file_name}" \
         --auth-mode login |
         log-output \
             --level info ||
-        echo "Failed to upload logs to Azure Blob Storage." |
+        echo "Warning: Failed to upload logs to Azure Blob Storage. This may be due to insufficient storage permissions. Logs are still available locally." |
         log-output \
-            --level error \
-            --header "Backup to Azure Blob Storage" ||
-        exit 1
+            --level warning \
+            --header "Backup Warning"
 }

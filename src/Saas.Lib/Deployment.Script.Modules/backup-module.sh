@@ -38,8 +38,11 @@ function backup-config-end() {
     cp "${IDENTITY_FOUNDATION_BICEP_PARAMETERS_FILE}" \
         "${LOG_FILE_DIR}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}/"
 
-    cp "${CERTIFICATE_POLICY_FILE}" \
-        "${LOG_FILE_DIR}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}/"
+    # Only copy certificate policy file if it exists
+    if [[ -f "${CERTIFICATE_POLICY_FILE}" ]]; then
+        cp "${CERTIFICATE_POLICY_FILE}" \
+            "${LOG_FILE_DIR}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}/"
+    fi
 }
 
 function backup-log() {
@@ -55,7 +58,11 @@ function backup-log() {
     mv "${LOG_FILE_DIR}/deploy-${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}.log" \
         "${LOG_FILE_DIR}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}/deploy.log"
 
+    # Try to backup to Azure Blob Storage, but don't fail if it doesn't work
     backup-to-azure-blob-storage \
         "${LOG_FILE_DIR}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}" \
-        "${script_name}"
+        "${script_name}" || echo "Backup to Azure Blob Storage failed, but deployment completed successfully." |
+        log-output \
+            --level warning \
+            --header "Backup Warning"
 }

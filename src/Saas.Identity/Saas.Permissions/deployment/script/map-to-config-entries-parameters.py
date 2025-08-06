@@ -103,12 +103,35 @@ def patch_paramenters_file(
     parameters['parameters'].update(get_output_value(identity_outputs, 'userAssignedIdentityName'))
     parameters['parameters'].update(get_output_value(identity_outputs, 'appConfigurationName'))
     
-    parameters['parameters'].update(get_deploy_b2c_value(config, 'domainName', 'azureB2CDomain'))
-    parameters['parameters'].update(get_deploy_b2c_value(config, 'tenantId', 'azureB2cTenantId'))
-    parameters['parameters'].update(get_deploy_b2c_value(config, 'instance', 'azureAdB2CInstanceURL'))
+    # For Entra ID, use the domain name and tenant ID from the Entra ID configuration
+    parameters['parameters'].update({
+        'azureB2CDomain': {
+            'value': config['initConfig']['entraId']['domainName']
+        }
+    })
+    parameters['parameters'].update({
+        'azureB2cTenantId': {
+            'value': config['initConfig']['entraId']['existingTenantId']
+        }
+    })
+    parameters['parameters'].update({
+        'azureAdB2CInstanceURL': {
+            'value': f"https://login.microsoftonline.com/{config['initConfig']['entraId']['existingTenantId']}"
+        }
+    })
     
-    parameters['parameters'].update(get_b2c_value(config, 'signedOutCallBackPath', 'signedOutCallBackPath'))
-    parameters['parameters'].update(get_b2c_value(config, 'signUpSignInPolicyId', 'signUpSignInPolicyId'))
+    # For Entra ID, use the sign-out callback path from the Entra ID configuration
+    parameters['parameters'].update({
+        'signedOutCallBackPath': {
+            'value': config['entraId']['signOutCallBackPath']
+        }
+    })
+    # For Entra ID, we don't use policy IDs like B2C, so use a placeholder
+    parameters['parameters'].update({
+        'signUpSignInPolicyId': {
+            'value': 'EntraID'
+        }
+    })
 
     parameters['parameters'].update(get_app_value(config, app_name, 'appId', 'clientId'))
     parameters['parameters'].update(get_app_value(config, app_name, 'baseUrl', 'baseUrl'))

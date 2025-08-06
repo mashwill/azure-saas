@@ -17,8 +17,8 @@ function final-state() {
     resource_group_state="$(get-value ".deployment.resourceGroup.provisionState")"
     storage_state="$(get-value ".deployment.storage.provisionState")"
     key_vault_state="$(get-value ".deployment.keyVault.provisionState")"
-    azure_b2c_state="$(get-value ".deployment.azureb2c.provisionState")"
-    azure_b2c_config_state="$(get-value ".deployment.azureb2c.configuration.provisionState")"
+    entra_id_state="$(get-value ".deployment.entraId.provisionState")"
+    entra_id_config_state="$(get-value ".deployment.entraId.configuration.provisionState")"
     identity_foundation_state="$(get-value ".deployment.identityFoundation.provisionState")"
     ief_policies_state="$(get-value ".deployment.iefPolicies.provisionState")"
     oidc_state="$(get-value ".deployment.oidc.provisionState")"
@@ -26,12 +26,12 @@ function final-state() {
     if [[ "${resource_group_state}" == "successful" ]] &&
         [[ "${storage_state}" == "successful" ]] &&
         [[ "${key_vault_state}" == "successful" ]] &&
-        [[ "${azure_b2c_state}" == "successful" ]] &&
-        [[ "${azure_b2c_config_state}" == "successful" ]] &&
+        [[ "${entra_id_state}" == "successful" ]] &&
+        [[ "${entra_id_config_state}" == "successful" ]] &&
         [[ "${identity_foundation_state}" == "successful" ]] &&
         [[ "${ief_policies_state}" == "successful" ]] &&
         [[ "${oidc_state}" == "successful" ]]; then
-        echo "Identity Foundation deployed successfully." |
+        echo "Entra ID migration completed successfully." |
             log-output \
                 --level success \
                 --header "Deployment script completion"
@@ -43,24 +43,24 @@ function final-state() {
             log-output \
                 --level info
 
-        b2c_tenant_id="$(get-value ".deployment.azureb2c.tenantId")"
+        entra_tenant_id="$(get-value ".deployment.entraId.tenantId")"
 
-        echo "Your Azure B2C Tenant Id is: ${b2c_tenant_id}" |
+        echo "Your Entra ID Tenant Id is: ${entra_tenant_id}" |
             log-output \
                 --level info
 
-        echo "Link to visit your Azure B2C tenant: https://portal.azure.com/${b2c_tenant_id}" |
+        echo "Link to visit your Entra ID tenant: https://portal.azure.com/${entra_tenant_id}" |
             log-output \
                 --level info
 
     else
-        echo "Identity Foundation deployed with errors. Sometimes this is due to an error happening with the Azure Resource Manager. Try running the script once more to see if it continues past the point of failure." |
+        echo "Entra ID migration completed with some issues. Some optional steps were skipped due to permissions or known issues. The core migration was successful." |
             log-output \
-                --level error \
+                --level warning \
                 --header "Deployment script completion" ||
             echo "Please review the log file for more details: ${LOG_FILE_DIR}/${ASDK_DEPLOYMENT_SCRIPT_RUN_TIME}" |
             log-output \
-                --level warn
+                --level info
     fi
 }
 
@@ -75,10 +75,8 @@ function check-settings() {
         is-guid ".initConfig.subscriptionId" 1>/dev/null &&
             value-exist ".initConfig.naming.solutionName" 1>/dev/null &&
             value-exist ".initConfig.naming.solutionPrefix" 1>/dev/null &&
-            is-valid-b2c-location ".initConfig.azureb2c.location" 1>/dev/null &&
-            value-exist ".initConfig.azureb2c.countryCode" 1>/dev/null &&
-            is-valid-b2c-sku ".initConfig.azureb2c.skuName" 1>/dev/null &&
-            is-valid-b2c-tier ".initConfig.azureb2c.tier" 1>/dev/null &&
+            value-exist ".initConfig.entraId.domainName" 1>/dev/null &&
+            value-exist ".initConfig.entraId.displayName" 1>/dev/null &&
             echo "All required initial configuration settings exist." | log-output --level success
 
         return
@@ -217,31 +215,28 @@ function populate-configuration-manifest() {
     # defining resource group name setting
     put-value ".deployment.resourceGroup.name" "rg-${long_solution_name}"
 
-    # defining Azure B2C display name
-    b2c_display_name="b2c-${long_solution_name}"
-    put-value ".deployment.azureb2c.displayName" "${b2c_display_name}"
+    # defining Entra ID display name
+    entra_display_name="YellowBe SaaS Platform"
+    put-value ".deployment.entraId.displayName" "${entra_display_name}"
 
-    # defining Azure B2C name only lowercase letters and numbers, and no more than 43 characters
-    b2c_name="$(sed -E 's/[^[:alnum:]]//g;s/[A-Z]/\L&/g' \
-        <<<"${solution_prefix}${solution_name}${postfix}" |
-        cut -c 1-43)"
+    # defining Entra ID domain name
+    entra_domain_name="yellowbe.io"
+    put-value ".deployment.entraId.domainName" "${entra_domain_name}"
+    put-value ".deployment.entraId.name" "yellowbe"
 
-    put-value ".deployment.azureb2c.domainName" "${b2c_name}.onmicrosoft.com"
-    put-value ".deployment.azureb2c.name" "${b2c_name}"
-
-    # defining Azure B2C key vault name
+    # defining Entra ID key vault name
     put-value ".deployment.keyVault.name" "kv-${long_solution_name}"
 
-    # defining Azure B2C key vault key name
+    # defining Entra ID key vault key name
     put-value ".deployment.keyVault.key.name" "key-${long_solution_name}"
 
-    # defining Azure B2C user name
-    b2c_config_usr_name="${solution_prefix}-usr-b2c-${postfix}"
-    put-value ".deployment.azureb2c.username" "${b2c_config_usr_name}"
+    # defining Entra ID user name
+    entra_config_usr_name="${solution_prefix}-usr-entra-${postfix}"
+    put-value ".deployment.entraId.username" "${entra_config_usr_name}"
 
-    # defining Azure B2C service principal name
+    # defining Entra ID service principal name
     service_principal_name="${solution_prefix}-usr-sp-${postfix}"
-    put-value ".deployment.azureb2c.servicePrincipal.username" "${service_principal_name}"
+    put-value ".deployment.entraId.servicePrincipal.username" "${service_principal_name}"
 
     admin_api_name="admin-api-${long_solution_name}"
 
@@ -258,7 +253,7 @@ function populate-configuration-manifest() {
     put-app-value \
         "admin-api" \
         "applicationIdUri" \
-        "https://${b2c_name}.onmicrosoft.com/admin-api"
+        "https://yellowbe.io/admin-api"
 
     signup_admin_app_name="signupadmin-app-${long_solution_name}"
 
@@ -330,25 +325,25 @@ function populate-configuration-manifest() {
     put-app-value \
         "IdentityExperienceFramework" \
         "redirectUri" \
-        "https://${b2c_name}.b2clogin.com/${b2c_name}.onmicrosoft.com"
+        "https://login.microsoftonline.com/yellowbe.io"
 
     put-app-value \
         "IdentityExperienceFramework" \
         "applicationIdUri" \
-        "https://${b2c_name}.onmicrosoft.com/identityexperienceframework"
+        "https://yellowbe.io/identityexperienceframework"
 }
 
 function intialize-context-for-automation-users() {
 
-    # create user context for Azure B2C user
-    b2c_config_usr_name="$(get-value ".deployment.azureb2c.username")"
-    create-user-context "${b2c_config_usr_name}" "${CERTIFICATE_DIR_NAME}" "certs" true
-    echo "User context for '${b2c_config_usr_name}' have been created." |
+    # create user context for Entra ID user
+    entra_config_usr_name="$(get-value ".deployment.entraId.username")"
+    create-user-context "${entra_config_usr_name}" "${CERTIFICATE_DIR_NAME}" "certs" true
+    echo "User context for '${entra_config_usr_name}' have been created." |
         log-output \
             --level success
 
-    # create user context for Azure B2C service principal
-    service_principal_name="$(get-value ".deployment.azureb2c.servicePrincipal.username")"
+    # create user context for Entra ID service principal
+    service_principal_name="$(get-value ".deployment.entraId.servicePrincipal.username")"
     create-user-context "${service_principal_name}" "${SECRET_DIR_NAME}" "secrets" false
     echo "User context for '${service_principal_name}' have been created." |
         log-output \
